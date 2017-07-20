@@ -105,10 +105,6 @@ int PCM_BT = 3;
  * output only supports 1 (stereo) and the multi channel HDMI output 2 (5.1 and 7.1) */
 #define MAX_SUPPORTED_CHANNEL_MASKS 2
 
-#ifndef RK3368
-#define SPEEX_DENOISE_ENABLE
-#endif
-
 #define HW_PARAMS_FLAG_LPCM 0
 #define HW_PARAMS_FLAG_NLPCM 1
 
@@ -175,24 +171,6 @@ struct pcm_config pcm_config_in = {
     .channels = 2,
     .rate = 44100,
     .period_size = 1024,
-    .period_count = 4,
-    .format = PCM_FORMAT_S16_LE,
-    .flag = HW_PARAMS_FLAG_LPCM,
-};
-#elif defined RK3399_LAPTOP
-struct pcm_config pcm_config = {
-    .channels = 2,
-    .rate = 48000,
-    .period_size = 480,
-    .period_count = 4,
-    .format = PCM_FORMAT_S16_LE,
-    .flag = HW_PARAMS_FLAG_LPCM,
-};
-
-struct pcm_config pcm_config_in = {
-    .channels = 2,
-    .rate = 48000,
-    .period_size = 120,
     .period_count = 4,
     .format = PCM_FORMAT_S16_LE,
     .flag = HW_PARAMS_FLAG_LPCM,

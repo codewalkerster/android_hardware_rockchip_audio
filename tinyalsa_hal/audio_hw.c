@@ -464,17 +464,6 @@ static int read_snd_card_info(void)
         PCM_CARD_HDMI = 1;
         PCM_CARD =1;
     }
-#ifdef RK3399_LAPTOP
-    if (strstr (buf1, "rockchipbt")) {
-        PCM_CARD = 0;
-        PCM_BT = 1;
-        PCM_CARD_HDMI = 2;
-    } else if (strstr(buf1, "rockchipcdndpso")) {
-        PCM_CARD = 0;
-        PCM_CARD_HDMI = 1;
-        PCM_BT = 2;
-    }
-#endif
     return 0;
 }
 #ifdef BOX_HAL
@@ -583,13 +572,6 @@ static int start_output_stream(struct stream_out *out)
         out->device &= ~AUDIO_DEVICE_OUT_SPEAKER;
     }
 
-#ifdef RK3228
-    if (direct_mode.output_mode == HW_PARAMS_FLAG_LPCM) {
-        if (out->device & AUDIO_DEVICE_OUT_AUX_DIGITAL) {
-            out->device |= AUDIO_DEVICE_OUT_SPEAKER;
-        }
-    }
-#endif
     out_dump(out, 0);
 #endif
     connect_hdmi = true;
@@ -770,52 +752,7 @@ static int start_input_stream(struct stream_in *in)
 
     in_dump(in, 0);
     route_pcm_open(getRouteFromDevice(in->device | AUDIO_DEVICE_BIT_IN));
-#ifdef RK3399_LAPTOP //HARD CODE FIXME
-    if ((in->device & AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET) &&
-            (adev->mode == AUDIO_MODE_IN_COMMUNICATION)) {
-        in->config = &pcm_config_in_bt;
-        in->pcm = pcm_open(PCM_BT, PCM_DEVICE, PCM_IN, in->config);
-
-        if (in->resampler) {
-            release_resampler(in->resampler);
-
-            in->buf_provider.get_next_buffer = get_next_buffer;
-            in->buf_provider.release_buffer = release_buffer;
-
-            ret = create_resampler(8000,
-                                   16000,
-                                   2,
-                                   RESAMPLER_QUALITY_DEFAULT,
-                                   &in->buf_provider,
-                                   &in->resampler);
-            if (ret != 0) {
-                ret = -EINVAL;
-            }
-        }
-    } else {
-        in->config = &pcm_config_in;
-        in->pcm = pcm_open(PCM_CARD, PCM_DEVICE, PCM_IN, in->config);
-
-        if (in->resampler) {
-            release_resampler(in->resampler);
-
-            in->buf_provider.get_next_buffer = get_next_buffer;
-            in->buf_provider.release_buffer = release_buffer;
-
-            ret = create_resampler(48000,
-                                   16000,
-                                   2,
-                                   RESAMPLER_QUALITY_DEFAULT,
-                                   &in->buf_provider,
-                                   &in->resampler);
-            if (ret != 0) {
-                ret = -EINVAL;
-            }
-        }
-    }
-#else
     in->pcm = pcm_open(PCM_CARD, PCM_DEVICE, PCM_IN, in->config);
-#endif
     if (in->pcm && !pcm_is_ready(in->pcm)) {
         ALOGE("pcm_open() failed: %s", pcm_get_error(in->pcm));
         pcm_close(in->pcm);
@@ -1213,10 +1150,6 @@ static int out_set_parameters(struct audio_stream *stream, const char *kvpairs)
                                   !adev->outputs[OUTPUT_HDMI_MULTI] ||
                                   adev->outputs[OUTPUT_HDMI_MULTI]->standby)) {
                 adev->out_device = output_devices(out) | val;
-#ifndef RK3228
-                do_out_standby(out);
-#endif
-
             }
             out->device = val;
         }
@@ -1988,12 +1921,6 @@ static ssize_t in_read(struct audio_stream_in *stream, void* buffer,
                 in->mSpeexPcmIn[index-startPos] = data[index*channel_count]/2 + data[index*channel_count+1]/2;
 
             speex_preprocess_run(in->mSpeexState,in->mSpeexPcmIn);
-#ifndef TARGET_RK2928
-            for(ch = 0 ; ch < channel_count; ch++)
-                for(index = startPos; index< startPos + in->mSpeexFrameSize ; index++ ) {
-                    data[index*channel_count+ch] = in->mSpeexPcmIn[index-startPos];
-                }
-#else
             for(index = startPos; index< startPos + in->mSpeexFrameSize ; index++ ) {
                 int tmp = (int)in->mSpeexPcmIn[index-startPos]+ in->mSpeexPcmIn[index-startPos]/2;
                 data[index*channel_count+0] = tmp > 32767 ? 32767 : (tmp < -32768 ? -32768 : tmp);
@@ -2002,7 +1929,6 @@ static ssize_t in_read(struct audio_stream_in *stream, void* buffer,
                 for(index = startPos; index< startPos + in->mSpeexFrameSize ; index++ ) {
                     data[index*channel_count+ch] = data[index*channel_count+0];
                 }
-#endif
             startPos += in->mSpeexFrameSize;
         }
     }

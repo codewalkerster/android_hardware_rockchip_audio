@@ -33,29 +33,10 @@ LOCAL_CFLAGS := -Wno-unused-parameter
 ifeq ($(strip $(TARGET_BOARD_PLATFORM_PRODUCT)), box)
 LOCAL_CFLAGS += -DBOX_HAL
 endif
-ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3368)
-LOCAL_CFLAGS += -DRK3368
-endif
-ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3228h)
-        LOCAL_CFLAGS += -DRK3228
-endif
-ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3328)
-        LOCAL_CFLAGS += -DRK3228
-endif
-ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3228)
-        LOCAL_CFLAGS += -DRK3228
-endif
-ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk322x)
-	LOCAL_CFLAGS += -DRK3228
-endif
 ifeq ($(strip $(TARGET_BOARD_PLATFORM)),rk3399)
     LOCAL_CFLAGS += -DRK3399
 endif
 
-ifeq ($(strip $(TARGET_BOARD_PLATFORM_PRODUCT)), laptop)
-LOCAL_CFLAGS += -DRK3399_LAPTOP
-LOCAL_CFLAGS += -DBT_AP_SCO
-endif
 ifeq ($(AUD_VOICE_CONFIG),voice_support)
 LOCAL_CFLAGS += -DVOICE_SUPPORT
 endif
