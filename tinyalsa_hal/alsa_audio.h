@@ -98,6 +98,7 @@ struct mixer {
     struct mixer_ctl *ctl;
     unsigned count;
 };
+const struct config_route *get_route_config(unsigned route);
 
 struct mixer *mixer_open_legacy(unsigned card);
 void mixer_close_legacy(struct mixer *mixer);
