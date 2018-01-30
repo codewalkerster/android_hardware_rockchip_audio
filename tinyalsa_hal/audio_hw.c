@@ -299,8 +299,8 @@ unsigned getOutputRouteFromDevice(uint32_t device)
     case AUDIO_DEVICE_OUT_BLUETOOTH_SCO_HEADSET:
     case AUDIO_DEVICE_OUT_BLUETOOTH_SCO_CARKIT:
         return BLUETOOTH_NORMAL_ROUTE;
-        //case AudioSystem::DEVICE_OUT_AUX_DIGITAL:
-        //	return HDMI_NORMAL_ROUTE;
+    case AUDIO_DEVICE_OUT_AUX_DIGITAL:
+	return HDMI_NORMAL_ROUTE;
         //case AudioSystem::DEVICE_OUT_EARPIECE:
         //	return EARPIECE_NORMAL_ROUTE;
         //case AudioSystem::DEVICE_OUT_ANLG_DOCK_HEADSET:
@@ -423,12 +423,16 @@ static int read_snd_card_info(void)
     ALOGD("read_snd_card_info buf1 = %s",buf1);
     ALOGD("read_snd_card_info buf2 = %s",buf2);
     if (strstr (buf1, "SPDIF") || strstr (buf1, "rockchipspdif")) {
-        if (strstr(buf2, "HDMI") || strstr(buf2, "rockchiphdmi") || strstr(buf2, "rockchipcdndpfb") || strstr(buf2, "rockchipcdndpso")) {
+        if (strstr(buf2, "HDMI") || strstr(buf2, "rockchiphdmi") || strstr(buf2, "rockchipcdndpfb") || strstr(buf2, "rockchipcdndpso") || strstr(buf2,"rkhdmidpsound")) {
             ALOGD("now is 3 snd card mode");
             PCM_CARD = 0;
             PCM_CARD_SPDIF = 1;
             PCM_CARD_HDMI = 2;
-        } else {
+        }else if(strstr (buf0,"RKRK312X") && strstr(buf1,"RKSPDIFCARD")){
+			PCM_CARD = 0;
+			PCM_CARD_HDMI = 0;
+			PCM_CARD_SPDIF= 1;
+	    }else {
             ALOGD("now is 2 snd card mode");
             PCM_CARD = 0;
             PCM_CARD_HDMI = 0;
@@ -443,7 +447,7 @@ static int read_snd_card_info(void)
             PCM_CARD_SPDIF = 0;
             PCM_CARD = 1;
         }
-    } else if (strstr(buf0, "HDMI") || strstr(buf0, "rockchiphdmi") || strstr(buf0, "rockchipcdndpfb") || strstr(buf0, "rockchipcdndpso")) {
+    } else if (strstr(buf0, "HDMI") || strstr(buf0, "rockchiphdmi") || strstr(buf0, "rockchipcdndpfb") || strstr(buf0, "rockchipcdndpso") || strstr(buf0, "rkhdmianalogsnd")) {
         PCM_CARD = 0;
         PCM_CARD_HDMI = 0;
         PCM_CARD_SPDIF = 1;
@@ -463,7 +467,22 @@ static int read_snd_card_info(void)
         PCM_CARD_SPDIF = 0;
         PCM_CARD_HDMI = 1;
         PCM_CARD =1;
+    }else if(strstr(buf0,"rockchiprt5640c")){
+        PCM_CARD_HDMI = 0;
+		PCM_CARD = 0;
+	}
+
+#ifdef RK3399_LAPTOP
+    if (strstr (buf1, "rockchipbt")) {
+        PCM_CARD = 0;
+        PCM_BT = 1;
+        PCM_CARD_HDMI = 2;
+    } else if (strstr(buf1, "rockchipcdndpso")) {
+        PCM_CARD = 0;
+        PCM_CARD_HDMI = 1;
+        PCM_BT = 2;
     }
+#endif
     return 0;
 }
 #ifdef BOX_HAL
@@ -505,7 +524,6 @@ static int mixer_mode_set(struct stream_out *out)
     struct mixer_ctl *pctl;
     struct mixer *mMixerPlayback;
 
-    const struct config_route *route_info = get_route_config(getRouteFromDevice(out->device));
     mMixerPlayback = mixer_open_legacy(PCM_CARD_HDMI);
     mMixer = mMixerPlayback;
     pctl = mixer_get_control(mMixer,"AUDIO MODE",0 );
@@ -572,6 +590,14 @@ static int start_output_stream(struct stream_out *out)
         out->device &= ~AUDIO_DEVICE_OUT_SPEAKER;
     }
 
+    read_snd_card_info();
+#ifdef RK3228
+    if (direct_mode.output_mode == HW_PARAMS_FLAG_LPCM) {
+        if (out->device & AUDIO_DEVICE_OUT_AUX_DIGITAL) {
+            out->device |= AUDIO_DEVICE_OUT_SPEAKER;
+        }
+    }
+#endif
     out_dump(out, 0);
 #endif
     connect_hdmi = true;
@@ -579,6 +605,7 @@ static int start_output_stream(struct stream_out *out)
 
     if (out->device & AUDIO_DEVICE_OUT_AUX_DIGITAL) {
         if (connect_hdmi) {
+#ifdef BOX_HAL
 #ifdef RK3399
             int ret = 0;
             ret = mixer_mode_set(out);
@@ -587,8 +614,9 @@ static int start_output_stream(struct stream_out *out)
                 ALOGE("mixer mode set error,ret=%d!",ret);
             }
 #endif
+#endif
             out->pcm[PCM_CARD_HDMI] = pcm_open(PCM_CARD_HDMI, out->pcm_device,
-                                               PCM_OUT | PCM_MONOTONIC, &out->config);
+                                                PCM_OUT | PCM_MONOTONIC, &out->config);
             if (out->pcm[PCM_CARD_HDMI] &&
                     !pcm_is_ready(out->pcm[PCM_CARD_HDMI])) {
                 ALOGE("pcm_open(PCM_CARD_HDMI) failed: %s",
@@ -752,7 +780,52 @@ static int start_input_stream(struct stream_in *in)
 
     in_dump(in, 0);
     route_pcm_open(getRouteFromDevice(in->device | AUDIO_DEVICE_BIT_IN));
+#ifdef RK3399_LAPTOP //HARD CODE FIXME
+    if ((in->device & AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET) &&
+            (adev->mode == AUDIO_MODE_IN_COMMUNICATION)) {
+        in->config = &pcm_config_in_bt;
+        in->pcm = pcm_open(PCM_BT, PCM_DEVICE, PCM_IN, in->config);
+
+        if (in->resampler) {
+            release_resampler(in->resampler);
+
+            in->buf_provider.get_next_buffer = get_next_buffer;
+            in->buf_provider.release_buffer = release_buffer;
+
+            ret = create_resampler(8000,
+                                   in->requested_rate,
+                                   audio_channel_count_from_in_mask(in->channel_mask),
+                                   RESAMPLER_QUALITY_DEFAULT,
+                                   &in->buf_provider,
+                                   &in->resampler);
+            if (ret != 0) {
+                ret = -EINVAL;
+            }
+        }
+    } else {
+        in->config = &pcm_config_in;
+        in->pcm = pcm_open(PCM_CARD, PCM_DEVICE, PCM_IN, in->config);
+
+        if (in->resampler) {
+            release_resampler(in->resampler);
+
+            in->buf_provider.get_next_buffer = get_next_buffer;
+            in->buf_provider.release_buffer = release_buffer;
+
+            ret = create_resampler(48000,
+                                   in->requested_rate,
+                                   audio_channel_count_from_in_mask(in->channel_mask),
+                                   RESAMPLER_QUALITY_DEFAULT,
+                                   &in->buf_provider,
+                                   &in->resampler);
+            if (ret != 0) {
+                ret = -EINVAL;
+            }
+        }
+    }
+#else
     in->pcm = pcm_open(PCM_CARD, PCM_DEVICE, PCM_IN, in->config);
+#endif
     if (in->pcm && !pcm_is_ready(in->pcm)) {
         ALOGE("pcm_open() failed: %s", pcm_get_error(in->pcm));
         pcm_close(in->pcm);
@@ -995,14 +1068,17 @@ static void do_out_standby(struct stream_out *out)
         }
         out->standby = true;
         out->nframes = 0;
+		property_set("media.audio.slice", "0");
         if (out == adev->outputs[OUTPUT_HDMI_MULTI]) {
             /* force standby on low latency output stream so that it can reuse HDMI driver if
              * necessary when restarted */
             force_non_hdmi_out_standby(adev);
         }
+#ifdef BOX_HAL
 #ifdef RK3399
         out->output_direct_mode = LPCM;
         mixer_mode_set(out);
+#endif
 #endif
         if (out->device & AUDIO_DEVICE_OUT_ALL_SCO)
             stop_bt_sco(adev);
@@ -1330,6 +1406,97 @@ static void set_bitstream_buf(void * in, void* out, size_t length)
     }
 }
 
+const float volume_slice[]={0.8012, 0.6419, 0.5309, 0.4254,
+                            0.3408, 0.2828, 0.1773, 0.1116,
+                            0.0750, 0.0472, 0.0297, 0.0200,
+                            0.0078, 0.0031, 0.0010, 0.0000};
+
+const float delta_slice[] = {0.8, 0.6, 0.48, 0.3, 0.17, 0.1, 0.05, 0};
+
+float get_len_posi(struct stream_out *out,int len)
+{
+    int len_max = out->out_data_size / 2;
+	int ret = 0;
+	
+	if (len < len_max / 8)
+		ret = 0;
+	else if ((len > len_max/8)&&(len < len_max/4))
+		ret = 1;
+    else if ((len > len_max/4) && (len < (len_max*3) /8))
+		ret = 2;
+	else if ((len > (len_max*3) /8) && (len < len_max/2))
+		ret = 3;
+	else if ((len > len_max/2) && (len < (len_max*5) /8))
+		ret = 4;
+	else if ((len > (len_max*5) /8) && (len < (len_max*3) /4))
+		ret = 5;
+	else if ((len > (len_max*3) /4) && (len < (len_max*7) /8))
+		ret = 6;
+	else
+		ret = 7;
+	
+	return delta_slice[ret];
+
+}
+static int cal_data_slice(struct stream_out *out,void *data,int len,int times,bool down)
+{
+    
+    int16_t *raw =(int16_t *)data;
+	len /=2;
+	if (times > 15)times =15;
+	else if (times < 0)times =0;
+	while (len--){
+		float tmp = (float)(*(raw+len));
+		if (down)
+			tmp *=(volume_slice[times] -
+			          (volume_slice[times]-volume_slice[times+1]*(1-get_len_posi(out,len))));
+		else{
+			if (times >=1)
+				tmp *=(volume_slice[times] +
+				         ((volume_slice[times-1] - volume_slice[times]) * (1-get_len_posi(out,len))));
+			else
+				tmp *=(volume_slice[times] +
+				         ((1 - volume_slice[times]) * (1-get_len_posi(out,len))));
+	    }
+		*(raw + len)=(int16_t) tmp;
+	}
+    return 0;
+}
+
+static void set_data_slice(void *in_data,struct stream_out *out,size_t length)
+{
+    //Resolve the broken sound when cut the table
+	int slice_mode = 0 ;
+	
+	char value[PROPERTY_VALUE_MAX];
+	property_get("media.audio.slice",value,"0");
+	if (atoi(value)>0)
+		slice_mode = atoi(value);
+	if(slice_mode ==1){
+		out->slice_time_up = 0;
+		ALOGD("for audio slice slicetime = %d,slice_mode =%d",out->slice_time_down,slice_mode);
+		cal_data_slice (out,(void *)in_data, length, out->slice_time_down,true);
+		out->slice_time_down++;
+	    if (out->slice_time_down >= 50){
+		   property_set("media.audio.slice","0");
+		   out->slice_time_down = 15;
+		}								 
+	}else if(slice_mode==2){
+		out->slice_time_down =0;
+	    if(out->slice_time_up==0)
+		   out->slice_time_up =15;
+	    ALOGD("for audio slice slicetime = %d,slice_mode =%d",out->slice_time_up,slice_mode);
+		cal_data_slice (out,(void *)in_data, length, out->slice_time_up,false);
+		out->slice_time_up--;
+		if (out->slice_time_up <= 0){
+		   property_set("media.audio.slice","0");
+	    }
+	}else{
+		out->slice_time_up =0;
+		out->slice_time_down =0;
+	}
+}
+
 /**
  * @brief out_write
  *
@@ -1339,6 +1506,7 @@ static void set_bitstream_buf(void * in, void* out, size_t length)
  *
  * @returns
  */
+
 static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
                          size_t bytes)
 {
@@ -1353,6 +1521,7 @@ static ssize_t out_write(struct audio_stream_out *stream, const void* buffer,
      * executing out_set_parameters() while holding the hw device
      * mutex
      */
+    out->out_data_size = bytes;
     char value[PROPERTY_VALUE_MAX];
     property_get("media.audio.debug",value, NULL);
     if (strstr (value, "1") || strstr (value, "true")) {
@@ -1399,13 +1568,16 @@ false_alarm:
 
     if (out->muted)
         memset((void *)buffer, 0, bytes);
-
+	
+	if (direct_mode.output_mode == HW_PARAMS_FLAG_LPCM){
+		set_data_slice((void *)buffer,out,bytes);
+	}
+	
     property_get("media.audio.record", value, NULL);
     prop_pcm = atoi(value);
     if (prop_pcm > 0) {
         dump_out_data(buffer, bytes, &prop_pcm);
     }
-
 #if 0
     usleep(bytes * 1000000 / audio_stream_out_frame_size(stream) /
            out_get_sample_rate(&stream->common));
@@ -1417,7 +1589,13 @@ false_alarm:
     /* Write to all active PCMs */
     if ((direct_mode.output_mode == HW_PARAMS_FLAG_NLPCM) && (direct_mode.hbr_Buf != NULL)) {
         if (out->pcm[PCM_CARD_HDMI] != NULL) {
-            ret = pcm_write(out->pcm[PCM_CARD_HDMI], (void *)direct_mode.hbr_Buf, newbytes);
+#ifdef BOX_HAL
+#ifdef RK3128
+              ret = pcm_write(out->pcm[PCM_CARD_HDMI], (void *)buffer, bytes);
+#else
+              ret = pcm_write(out->pcm[PCM_CARD_HDMI], (void *)direct_mode.hbr_Buf, newbytes);
+#endif
+#endif
             if (ret != 0) {
                 goto exit;
             }
@@ -2144,6 +2322,11 @@ static int adev_open_output_stream(struct audio_hw_device *dev,
     if ((type == OUTPUT_HDMI_MULTI) && (devices & AUDIO_DEVICE_OUT_AUX_DIGITAL) && (device_mode == HDMI_BITSTREAM_MODE)) {
         direct_mode.output_mode = HW_PARAMS_FLAG_NLPCM;
         out->config.format = PCM_FORMAT_S24_LE;
+#ifdef BOX_HAL
+#ifdef RK3128
+		out->config.format = PCM_FORMAT_S16_LE;
+#endif
+#endif
         setChanSta(out->config.rate, out->config.channels);
     } else {
         direct_mode.output_mode = HW_PARAMS_FLAG_LPCM;
@@ -2179,6 +2362,10 @@ static int adev_open_output_stream(struct audio_hw_device *dev,
 
     out->standby = true;
     out->nframes = 0;
+	
+	out->slice_time_up = 0;
+	out->slice_time_down = 0;
+	property_set("media.audio.slice", "0");
     /* out->muted = false; by calloc() */
     /* out->written = 0; by calloc() */
 
