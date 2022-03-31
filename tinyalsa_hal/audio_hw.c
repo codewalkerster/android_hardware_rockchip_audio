@@ -873,9 +873,7 @@ static int start_output_stream(struct stream_out *out)
     out->disabled = false;
     read_out_sound_card(out);
 
-#ifdef BOX_HAL
     open_sound_card_policy(out);
-#endif
 
     out_dump(out, 0);
 

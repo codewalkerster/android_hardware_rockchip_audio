@@ -17,7 +17,7 @@
 const struct config_control default_speaker_normal_controls[] = {
     {
         .ctl_name = "Playback Path",
-        .str_val = "SPK",
+        .str_val = "SPK_HP",
     },
 };
 
