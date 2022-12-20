@@ -63,17 +63,14 @@
 #include <audio_utils/resampler.h>
 #include <audio_route/audio_route.h>
 
-
-//#include <speex/speex.h>
-#include <speex/speex_preprocess.h>
-
-
 #include <poll.h>
 #include <linux/fb.h>
 #include <hardware_legacy/uevent.h>
 
 #include "voice_preprocess.h"
 #include "audio_hw_hdmi.h"
+#include "denoise/rkdenoise.h"
+#include "bitstream/audio_bitstream_manager.h"
 
 #define AUDIO_HAL_VERSION "ALSA Audio Version: V1.1.0"
 
@@ -103,7 +100,7 @@
 #define MAX_SUPPORTED_SAMPLE_RATES 2
 
 #ifndef BOX_HAL
-#define SPEEX_DENOISE_ENABLE
+#define RK_DENOISE_ENABLE
 #endif
 
 #define HW_PARAMS_FLAG_LPCM 0
@@ -153,8 +150,8 @@ struct pcm_config pcm_config = {
 struct pcm_config pcm_config_in = {
     .channels = 2,
     .rate = 44100,
-#ifdef SPEEX_DENOISE_ENABLE
-    .period_size = 1024,
+#ifdef RK_DENOISE_ENABLE
+    .period_size = 441,
 #else
     .period_size = 256,
 #endif
@@ -225,9 +222,14 @@ struct pcm_config pcm_config_hdmi_multi = {
 struct pcm_config pcm_config_direct = {
     .channels = 2,
     .rate = 48000,
-    .period_size = 1024*4,
-    .period_count = 3,
-    .format = PCM_FORMAT_S16_LE,
+    .period_size = 1024,
+    .period_count = 4,
+
+#ifdef IEC958_FORAMT
+    .format = PCM_FORMAT_IEC958_SUBFRAME_LE,
+#else
+    .format = PCM_FORMAT_S24_LE,
+#endif
 };
 
 enum output_type {
@@ -271,6 +273,7 @@ struct dev_info
     const char *id;
     int card;
     int device;
+    int score;
 };
 
 struct audio_device {
@@ -343,14 +346,15 @@ struct stream_out {
     int output_direct_mode;
     struct audio_device *dev;
     struct resampler_itfe *resampler;
+
     // for hdmi bitstream
-    char* channel_buffer;
-    char* bitstream_buffer;
+    rk_bistream *bistream;
 
     struct hdmi_audio_infors hdmi_audio;
 
     bool  snd_reopen;
     bool  use_default_config;
+    float volume[2];
 };
 
 struct stream_in {
@@ -379,11 +383,12 @@ struct stream_in {
     struct audio_device *dev;
     audio_channel_mask_t supported_channel_masks[MAX_SUPPORTED_CHANNEL_MASKS + 1];
     uint32_t supported_sample_rates[MAX_SUPPORTED_SAMPLE_RATES + 1];
-#ifdef SPEEX_DENOISE_ENABLE
-    SpeexPreprocessState* mSpeexState;
-    int mSpeexFrameSize;
-    int16_t *mSpeexPcmIn;
+#ifdef RK_DENOISE_ENABLE
+    hrkdeniose mDenioseState;
 #endif
+    uint32_t channel_flag;
+    int start_checkcount;
+    uint64_t frames_read;
 };
 
 #define STRING_TO_ENUM(string) { #string, string }
