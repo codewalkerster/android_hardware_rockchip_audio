@@ -526,6 +526,7 @@ struct dev_proc_info SPDIF_OUT_NAME[] =
 
 struct dev_proc_info SPDIF_1_OUT_NAME[] =
 {
+    {"rockchipspdiftx", NULL,},
     {"rockchipdp1", NULL,},
     {NULL, NULL}, /* Note! Must end with NULL, else will cause crash */
 };
