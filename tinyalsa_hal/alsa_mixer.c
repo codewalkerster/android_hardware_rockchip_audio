@@ -244,7 +244,7 @@ struct mixer *mixer_open_legacy(unsigned card)
             continue;
         }
 
-        unsigned int tlv_size = 2 * sizeof(unsigned int) + 2 * sizeof(unsigned int);
+        unsigned int tlv_size = 256 * sizeof(unsigned int);
         struct snd_ctl_tlv *tlv = malloc(sizeof(struct sndrv_ctl_tlv) + tlv_size);
 
         //tlv->numid < (info->id.numid + info->count) and

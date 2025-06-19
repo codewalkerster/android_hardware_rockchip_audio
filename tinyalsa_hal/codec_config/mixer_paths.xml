@@ -2,7 +2,7 @@
   <!-- These are the initial mixer settings -->
 
   <ctl name="Capture MIC Path" value="MIC OFF" />
-  <ctl name="Playback Path" value="OFF" />
+  <ctl name="Playback Path" value="ON" />
   <ctl name="Voice Call Path" value="OFF" />
   <ctl name="Voip Path" value="OFF" />
 
